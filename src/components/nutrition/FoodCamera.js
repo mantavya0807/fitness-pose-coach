@@ -1,7 +1,7 @@
 // src/components/nutrition/FoodCamera.js
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, Upload, Check, X, Loader, ChevronDown, Trash, Edit } from 'lucide-react';
+import { Camera, Upload, Check, X, Loader, ChevronDown, Trash, Edit, AlertTriangle, Info } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import foodRecognitionService from '../../services/foodRecognitionService';
 
@@ -14,6 +14,7 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
   
   // State
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraPermissionDenied, setCameraPermissionDenied] = useState(false);
   const [hasPhoto, setHasPhoto] = useState(false);
   const [photoData, setPhotoData] = useState(null);
   const [fileSelected, setFileSelected] = useState(false);
@@ -24,6 +25,22 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
   const [recognitionError, setRecognitionError] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editableFoods, setEditableFoods] = useState([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [processingState, setProcessingState] = useState('');
+  
+  // Set meal type based on current time of day
+  useEffect(() => {
+    const currentHour = new Date().getHours();
+    if (currentHour >= 5 && currentHour < 10) {
+      setSelectedMealType('breakfast');
+    } else if (currentHour >= 10 && currentHour < 15) {
+      setSelectedMealType('lunch');
+    } else if (currentHour >= 15 && currentHour < 22) {
+      setSelectedMealType('dinner');
+    } else {
+      setSelectedMealType('snack');
+    }
+  }, []);
   
   // Start camera when component mounts
   useEffect(() => {
@@ -39,6 +56,15 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
   // Start camera
   const startCamera = async () => {
     try {
+      setRecognitionError(null);
+      setCameraPermissionDenied(false);
+      
+      if (!navigator.mediaDevices) {
+        setCameraPermissionDenied(true);
+        setRecognitionError('Camera access is not available in your browser or environment. Please try uploading an image instead.');
+        return;
+      }
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: { ideal: 1280 },
@@ -49,10 +75,20 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        setCameraActive(true);
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play();
+          setCameraActive(true);
+        };
       }
     } catch (error) {
       console.error('Error starting camera:', error);
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setCameraPermissionDenied(true);
+        setRecognitionError('Camera access denied. Please allow camera access or upload an image instead.');
+      } else {
+        setRecognitionError(`Could not access camera: ${error.message}. Please try uploading an image instead.`);
+      }
     }
   };
   
@@ -82,7 +118,7 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
     // Convert canvas to data URL (base64 encoded image)
-    const imageDataUrl = canvas.toDataURL('image/jpeg');
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
     setPhotoData(imageDataUrl);
     setHasPhoto(true);
     setFileSelected(false);
@@ -100,6 +136,8 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     setRecognitionError(null);
     setEditMode(false);
     setEditableFoods([]);
+    setUploadProgress(0);
+    setProcessingState('');
     startCamera();
   };
   
@@ -108,10 +146,23 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     const file = e.target.files[0];
     if (!file) return;
     
+    // Check file size (limit to 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setRecognitionError('File size too large. Please select an image under 10MB.');
+      return;
+    }
+    
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      setRecognitionError('Please select a valid image file (JPEG, PNG, etc.)');
+      return;
+    }
+    
     setSelectedFile(file);
     setFileSelected(true);
     setHasPhoto(false);
     setPhotoData(null);
+    setRecognitionError(null);
     stopCamera();
     
     // Create a preview of the uploaded image
@@ -131,6 +182,8 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     setRecognitionError(null);
     setEditMode(false);
     setEditableFoods([]);
+    setUploadProgress(0);
+    setProcessingState('');
     startCamera();
   };
   
@@ -149,6 +202,24 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     return new Blob([uInt8Array], { type: contentType });
   };
   
+  // Update processing state with progress
+  const updateProcessingState = useCallback((state) => {
+    setProcessingState(state);
+    
+    // Different progress for different states
+    if (state === 'Uploading image...') {
+      setUploadProgress(20);
+    } else if (state === 'Analyzing food...') {
+      setUploadProgress(50);
+    } else if (state === 'Getting nutritional information...') {
+      setUploadProgress(70);
+    } else if (state === 'Processing results...') {
+      setUploadProgress(90);
+    } else if (state === 'Complete!') {
+      setUploadProgress(100);
+    }
+  }, []);
+  
   // Process photo through recognition service
   const processPhoto = async () => {
     if (!user) {
@@ -158,6 +229,8 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     
     setIsRecognizing(true);
     setRecognitionError(null);
+    setUploadProgress(0);
+    updateProcessingState('Preparing image...');
     
     try {
       let imageFile;
@@ -165,18 +238,25 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
       if (hasPhoto) {
         // Convert canvas image to file
         const blob = dataURLtoBlob(photoData);
-        imageFile = new File([blob], "food-photo.jpg", { type: 'image/jpeg' });
+        imageFile = new File([blob], `food-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
       } else if (fileSelected && selectedFile) {
         imageFile = selectedFile;
       } else {
         throw new Error('No image selected');
       }
       
-      // Process the image through the recognition service
-      const result = await foodRecognitionService.recognizeFoodFromImage(
-        await foodRecognitionService.uploadFoodImage(imageFile, user.id)
-      );
+      // Upload the image
+      updateProcessingState('Uploading image...');
+      const imageUrl = await foodRecognitionService.uploadFoodImage(imageFile, user.id);
+      console.log('Image uploaded successfully:', imageUrl);
       
+      // Recognize food in the image
+      updateProcessingState('Analyzing food...');
+      const result = await foodRecognitionService.recognizeFoodFromImage(imageUrl);
+      console.log('Recognition result:', result);
+      
+      // Process results
+      updateProcessingState('Processing results...');
       setRecognitionResult(result);
       
       // Enable edit mode with recognized food items
@@ -186,14 +266,20 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
           servings: 1, // Default serving
           included: true // Include by default
         })));
-        setEditMode(true);
+        
+        updateProcessingState('Complete!');
+        setTimeout(() => {
+          setEditMode(true);
+          setIsRecognizing(false); // Need to set this here to properly transition to edit mode
+        }, 1000);
       } else {
-        setRecognitionError('No foods detected in the image. Try another photo.');
+        updateProcessingState('No foods detected');
+        setRecognitionError('No foods were detected in the image. Try another photo or a different angle.');
+        setIsRecognizing(false);
       }
     } catch (error) {
       console.error('Error recognizing food:', error);
       setRecognitionError(error.message || 'Failed to process the image. Please try again.');
-    } finally {
       setIsRecognizing(false);
     }
   };
@@ -203,6 +289,7 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     if (!user || !recognitionResult) return;
     
     setIsRecognizing(true);
+    updateProcessingState('Saving to your meal...');
     
     try {
       // Filter only included foods
@@ -221,13 +308,15 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
       }
       
       // Log recognition result
+      updateProcessingState('Logging recognition...');
       const logResult = await foodRecognitionService.saveFoodRecognitionLog(
-        photoData, // Or the URL if already uploaded
+        recognitionResult.imageUrl || photoData,
         { ...recognitionResult, foods: foodsToSave },
         user.id
       );
       
       // Add to meal
+      updateProcessingState('Adding to meal...');
       const mealResult = await foodRecognitionService.addRecognizedFoodsToMeal(
         foodsToSave,
         selectedMealType,
@@ -241,6 +330,8 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
         mealResult
       };
       
+      updateProcessingState('Success!');
+      
       // Small delay before closing to let the user see the success message
       setTimeout(() => {
         if (onSuccess) {
@@ -253,7 +344,6 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
     } catch (error) {
       console.error('Error saving recognized foods:', error);
       setRecognitionError(error.message || 'Failed to save foods. Please try again.');
-    } finally {
       setIsRecognizing(false);
     }
   };
@@ -321,12 +411,27 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
                 <canvas ref={canvasRef} className="hidden" />
                 
                 {/* Photo Preview */}
-                {(hasPhoto || fileSelected) && photoData && !recognitionResult && (
+                {(hasPhoto || fileSelected) && photoData && !recognitionResult && !isRecognizing && (
                   <img 
                     src={photoData} 
                     alt="Food" 
                     className="w-full h-full object-contain" 
                   />
+                )}
+                
+                {/* Camera Permission Denied */}
+                {cameraPermissionDenied && !fileSelected && !hasPhoto && (
+                  <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center text-white p-4">
+                    <AlertTriangle size={64} className="text-yellow-500 mb-4" />
+                    <h3 className="text-xl font-bold mb-2">Camera Access Denied</h3>
+                    <p className="text-center mb-4">Please allow camera access in your browser settings or upload an image instead.</p>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    >
+                      Upload Image
+                    </button>
+                  </div>
                 )}
                 
                 {/* Recognition Error */}
@@ -342,8 +447,21 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
                 {isRecognizing && (
                   <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center text-white p-4">
                     <Loader size={64} className="text-blue-500 animate-spin mb-4" />
-                    <h3 className="text-xl font-bold mb-2">Analyzing Food...</h3>
-                    <p className="text-center">This will just take a moment</p>
+                    <h3 className="text-xl font-bold mb-2">{processingState || "Processing..."}</h3>
+                    
+                    {/* Progress bar */}
+                    {uploadProgress > 0 && (
+                      <div className="w-full max-w-xs bg-gray-700 rounded-full h-2.5 mb-4 overflow-hidden">
+                        <div 
+                          className="bg-blue-500 h-2.5 transition-all duration-300" 
+                          style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                      </div>
+                    )}
+                    
+                    <p className="text-sm text-center text-gray-300">
+                      This might take a moment while we analyze your food and fetch nutritional information.
+                    </p>
                   </div>
                 )}
               </div>
@@ -443,9 +561,10 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
             <>
               <div className="mb-4">
                 <h3 className="font-medium text-gray-700 mb-2">Recognized Foods</h3>
-                <p className="text-sm text-gray-500 mb-4">
-                  Adjust servings or remove foods before adding to your {selectedMealType}.
-                </p>
+                <div className="flex items-center mb-4 p-2 bg-blue-50 rounded-lg text-sm text-blue-700">
+                  <Info size={18} className="mr-2 flex-shrink-0" />
+                  <span>Adjust servings or remove foods before adding to your {selectedMealType}.</span>
+                </div>
                 
                 {/* Food items list */}
                 <div className="space-y-3">
@@ -474,6 +593,11 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
                           <span className="inline-block mr-2">Carbs: {(food.carbs * food.servings).toFixed(1)}g</span>
                           <span className="inline-block">Fat: {(food.fat * food.servings).toFixed(1)}g</span>
                         </div>
+                        {food.food_id && (
+                          <div className="text-xs text-green-600 mt-1">
+                            Data from FatSecret API
+                          </div>
+                        )}
                       </div>
                       
                       {/* Serving controls */}
@@ -562,7 +686,7 @@ const FoodCamera = ({ isOpen, onClose, onSuccess }) => {
         {!editMode && !recognitionResult && !recognitionError && !isRecognizing && (
           <div className="p-4 bg-gray-50 border-t">
             <p className="text-xs text-gray-600">
-              <strong>Tips for best results:</strong> Take photos in good lighting, with the food clearly visible and centered in the frame. Try to avoid shadows and glare.
+              <strong>Tips for best results:</strong> Take photos in good lighting, with the food clearly visible and centered in the frame. Try to avoid shadows and glare. The system uses FatSecret API for nutritional information.
             </p>
           </div>
         )}
