@@ -1,9 +1,14 @@
 // src/pages/ExerciseDetailPage.js
 import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../supabaseClient';
 import useAuthStore from '../store/authStore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Heart, ArrowLeft, Play, Award, Dumbbell, 
+  AlertTriangle, Info, CheckCircle, X, ChevronRight 
+} from 'lucide-react';
 
 // Fetch single exercise with its details
 const fetchExerciseDetails = async (exerciseId) => {
@@ -17,11 +22,10 @@ const fetchExerciseDetails = async (exerciseId) => {
         exercise_details (*)
       `)
       .eq('id', exerciseId)
-      .single(); // Expect only one row
+      .single();
 
     if (error) {
       console.error("Error fetching exercise details:", error);
-      // Handle 'PGRST116' specificially if needed (row not found)
       if (error.code === 'PGRST116') throw new Error('Exercise not found.');
       throw new Error(error.message);
     }
@@ -41,8 +45,8 @@ const fetchRelatedExercises = async (exerciseId, muscleGroup) => {
       .from('exercises')
       .select('id, name, difficulty, demo_image_url')
       .eq('muscle_group', muscleGroup)
-      .neq('id', exerciseId) // Exclude current exercise
-      .limit(3); // Limit to 3 related exercises
+      .neq('id', exerciseId)
+      .limit(3);
       
     if (error) throw error;
     return data || [];
@@ -109,7 +113,7 @@ const checkFavoriteStatus = async (userId, exerciseId) => {
       .maybeSingle();
       
     if (error) throw error;
-    return !!data; // Convert to boolean
+    return !!data;
   } catch (error) {
     console.error("Error checking favorite status:", error);
     return false;
@@ -120,8 +124,11 @@ const ExerciseDetailPage = () => {
   const { exerciseId } = useParams();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
+  
   const [activeTab, setActiveTab] = useState('instructions');
   const [isFavorite, setIsFavorite] = useState(false);
+  const [showFavoriteAnimation, setShowFavoriteAnimation] = useState(false);
   
   // Fetch exercise details
   const { 
@@ -165,6 +172,11 @@ const ExerciseDetailPage = () => {
     mutationFn: saveExerciseMutation,
     onSuccess: () => {
       setIsFavorite(!isFavorite);
+      // Show animation when adding to favorites
+      if (!isFavorite) {
+        setShowFavoriteAnimation(true);
+        setTimeout(() => setShowFavoriteAnimation(false), 1500);
+      }
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ['favoriteStatus', user?.id, exerciseId] });
       queryClient.invalidateQueries({ queryKey: ['userFavorites', user?.id] });
@@ -204,10 +216,75 @@ const ExerciseDetailPage = () => {
     });
   };
   
-  // Loading and error states
-  if (isLoading) return <div className="text-center p-10">Loading exercise details...</div>;
-  if (error) return <div className="text-center p-10 text-red-500">Error: {error.message}</div>;
-  if (!exercise) return <div className="text-center p-10">Exercise data not available.</div>;
+  // Get difficulty color
+  const getDifficultyColor = (difficulty) => {
+    switch(difficulty?.toLowerCase()) {
+      case 'beginner': return 'bg-green-600';
+      case 'intermediate': return 'bg-yellow-500';
+      case 'advanced': return 'bg-red-600';
+      default: return 'bg-gray-600';
+    }
+  };
+  
+  // Get difficulty text color
+  const getDifficultyTextColor = (difficulty) => {
+    switch(difficulty?.toLowerCase()) {
+      case 'beginner': return 'text-green-600';
+      case 'intermediate': return 'text-yellow-600';
+      case 'advanced': return 'text-red-600';
+      default: return 'text-gray-600';
+    }
+  };
+  
+  // Loading states
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-10">
+        <div className="w-16 h-16 border-t-4 border-blue-600 border-solid rounded-full animate-spin mb-4"></div>
+        <p className="text-xl font-medium text-gray-600">Loading exercise details...</p>
+      </div>
+    );
+  }
+  
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-10">
+        <div className="max-w-3xl mx-auto bg-red-50 p-6 rounded-lg border border-red-200">
+          <h2 className="text-2xl font-bold text-red-700 mb-2 flex items-center">
+            <X className="mr-2 h-6 w-6" /> Error
+          </h2>
+          <p className="text-red-600 mb-6">{error.message}</p>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition flex items-center"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Not found state
+  if (!exercise) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-10">
+        <div className="max-w-3xl mx-auto bg-yellow-50 p-6 rounded-lg border border-yellow-200">
+          <h2 className="text-2xl font-bold text-yellow-700 mb-2 flex items-center">
+            <Info className="mr-2 h-6 w-6" /> Exercise Not Found
+          </h2>
+          <p className="text-yellow-600 mb-6">The exercise you're looking for doesn't exist or has been removed.</p>
+          <button
+            onClick={() => navigate('/explore')}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition flex items-center"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" /> Back to Exercises
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Safely access nested details
   const details = exercise.exercise_details || {};
@@ -216,254 +293,382 @@ const ExerciseDetailPage = () => {
   const equipmentWarning = !hasRequiredEquipment();
 
   return (
-    <div className="max-w-4xl mx-auto bg-white p-6 md:p-8 rounded-lg shadow-md">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-        <div>
-          <div className="flex items-center">
-            <h1 className="text-3xl md:text-4xl font-bold mb-1">{exercise.name}</h1>
-            <button 
-              onClick={handleToggleFavorite}
-              disabled={!user || toggleFavoriteMutation.isPending}
-              className="ml-3 text-gray-400 hover:text-yellow-500 transition-colors"
-              title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+    <div className="max-w-6xl mx-auto px-4 py-8">
+      {/* Hearts animation for favorite */}
+      <AnimatePresence>
+        {showFavoriteAnimation && (
+          <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
+            <motion.div 
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 1.5, opacity: 0 }}
+              transition={{ duration: 1 }}
+              className="text-red-500"
             >
-              <svg 
-                xmlns="http://www.w3.org/2000/svg" 
-                viewBox="0 0 24 24" 
-                fill={isFavorite ? "currentColor" : "none"}
-                stroke="currentColor"
-                className={`w-6 h-6 ${isFavorite ? 'text-yellow-500' : 'text-gray-400'}`}
-              >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth="2" 
-                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                />
-              </svg>
-            </button>
+              <Heart className="h-24 w-24 fill-current" />
+            </motion.div>
           </div>
-          <div className="flex flex-wrap gap-2 text-sm text-gray-500">
-            <span className="bg-gray-100 px-2 py-1 rounded">{exercise.type || 'N/A'}</span>
-            <span className="bg-gray-100 px-2 py-1 rounded">{exercise.muscle_group || 'N/A'}</span>
-            <span className={`px-2 py-1 rounded ${
-              exercise.difficulty === 'Beginner' ? 'bg-green-100 text-green-800' :
-              exercise.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-800' :
-              exercise.difficulty === 'Advanced' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
-            }`}>{exercise.difficulty || 'N/A'}</span>
-            <span className={`px-2 py-1 rounded ${
-              equipmentWarning ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
-            }`}>{exercise.equipment || 'No Equipment'}</span>
-          </div>
-        </div>
-        
-        <Link
-          to={`/workout/${exercise.id}/live`} // Link to the camera view
-          className="mt-4 md:mt-0 px-6 py-3 bg-green-500 text-white font-semibold rounded-lg shadow hover:bg-green-600 transition whitespace-nowrap"
+        )}
+      </AnimatePresence>
+      
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        {/* Back Button */}
+        <button 
+          onClick={() => navigate(-1)} 
+          className="mb-6 px-4 py-2 text-gray-600 hover:text-gray-900 inline-flex items-center transition group"
         >
-          Start Exercise
-        </Link>
-      </div>
-
-      {/* Equipment Warning */}
-      {equipmentWarning && (
-        <div className="mb-6 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700 flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-          </svg>
-          <span>
-            This exercise requires <strong>{exercise.equipment}</strong> which is not in your available equipment. 
-            <Link to="/settings" className="ml-1 underline text-blue-600">Update your equipment</Link>
-          </span>
-        </div>
-      )}
-
-      {/* Content Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Image/Demo */}
-        <div className="md:col-span-1">
+          <ArrowLeft className="mr-2 h-4 w-4 group-hover:-translate-x-1 transition-transform" />
+          <span>Back</span>
+        </button>
+        
+        {/* Hero Section */}
+        <div className="relative rounded-2xl overflow-hidden bg-gradient-to-r from-blue-600 to-purple-600 shadow-xl mb-8">
+          <div className="absolute inset-0 bg-black/20 z-10"></div>
+          
           {exercise.demo_image_url ? (
-            <img 
-              src={exercise.demo_image_url} 
-              alt={`${exercise.name} demonstration`} 
-              className="w-full rounded-lg shadow object-contain bg-gray-100" 
-            />
+            <div className="h-[400px] w-full">
+              <img 
+                src={exercise.demo_image_url} 
+                alt={`${exercise.name} demonstration`} 
+                className="w-full h-full object-cover"
+              />
+            </div>
           ) : (
-            <div className="w-full h-48 bg-gray-200 rounded-lg flex items-center justify-center text-gray-500">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+            <div className="h-[400px] w-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center">
+              <Dumbbell className="h-24 w-24 text-white/70" />
             </div>
           )}
           
-          {/* Quick Stats */}
-          <div className="mt-4 bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-semibold text-gray-700 mb-2">Quick Stats</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div className="bg-white p-2 rounded">
-                <p className="text-gray-500">Target</p>
-                <p className="font-medium">{exercise.muscle_group || 'N/A'}</p>
-              </div>
-              <div className="bg-white p-2 rounded">
-                <p className="text-gray-500">Equipment</p>
-                <p className="font-medium">{exercise.equipment || 'None'}</p>
-              </div>
-              <div className="bg-white p-2 rounded">
-                <p className="text-gray-500">Difficulty</p>
-                <p className="font-medium">{exercise.difficulty || 'N/A'}</p>
-              </div>
-              <div className="bg-white p-2 rounded">
-                <p className="text-gray-500">Cal/Rep</p>
-                <p className="font-medium">{details.calories_per_rep || 'N/A'}</p>
-              </div>
+          <div className="absolute inset-0 flex flex-col justify-end z-20 p-8 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-medium">
+                {exercise.type || 'Exercise'}
+              </span>
+              <span className="px-3 py-1 rounded-full bg-white/20 backdrop-blur-sm text-white text-sm font-medium">
+                {exercise.muscle_group || 'Various Muscles'}
+              </span>
+              <span className={`px-3 py-1 rounded-full text-white text-sm font-medium 
+                ${exercise.difficulty === 'Beginner' ? 'bg-green-500/70' : 
+                  exercise.difficulty === 'Intermediate' ? 'bg-yellow-500/70' : 
+                  exercise.difficulty === 'Advanced' ? 'bg-red-500/70' : 
+                  'bg-gray-500/70'} backdrop-blur-sm`}
+              >
+                {exercise.difficulty || 'Any Level'}
+              </span>
+            </div>
+            
+            <div className="flex items-center justify-between">
+              <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">{exercise.name}</h1>
+              
+              <button 
+                onClick={handleToggleFavorite}
+                disabled={!user || toggleFavoriteMutation.isPending}
+                className={`p-3 rounded-full ${
+                  isFavorite ? 'bg-red-500 text-white' : 'bg-white/20 text-white hover:bg-white/30'
+                } transition-all transform hover:scale-105 disabled:opacity-50 disabled:hover:scale-100`}
+                title={isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Heart className={`h-6 w-6 ${isFavorite ? 'fill-current' : ''}`} />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Details */}
-        <div className="md:col-span-2 space-y-6">
-          {/* Tabs */}
-          <div className="border-b border-gray-200">
-            <ul className="flex flex-wrap -mb-px text-sm font-medium text-center">
-              <li className="mr-2">
+        {/* Equipment Warning */}
+        {equipmentWarning && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-start gap-3"
+          >
+            <AlertTriangle className="h-6 w-6 text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-yellow-700">Equipment Required</h3>
+              <p className="text-yellow-600">
+                This exercise requires <strong>{exercise.equipment}</strong> which is not in your available equipment. 
+                <Link to="/settings" className="ml-1 underline text-blue-600 hover:text-blue-800">
+                  Update your equipment
+                </Link>
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column - Quick Stats */}
+          <div className="lg:col-span-1 space-y-6">
+            <motion.div 
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="bg-white rounded-xl shadow-md overflow-hidden"
+            >
+              <div className="p-6">
+                <h2 className="text-xl font-bold mb-4 text-gray-800">Quick Stats</h2>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+                    <div className="p-2 bg-blue-100 rounded-full mr-4">
+                      <Award className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Difficulty</p>
+                      <p className={`font-semibold ${getDifficultyTextColor(exercise.difficulty)}`}>
+                        {exercise.difficulty || 'Not specified'}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+                    <div className="p-2 bg-purple-100 rounded-full mr-4">
+                      <Dumbbell className="h-6 w-6 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Equipment</p>
+                      <p className="font-semibold">{exercise.equipment || 'Bodyweight'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+                    <div className="p-2 bg-green-100 rounded-full mr-4">
+                      <div className="h-6 w-6 flex items-center justify-center text-green-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Muscle Focus</p>
+                      <p className="font-semibold line-clamp-1">{exercise.muscle_group || 'Various'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center p-3 bg-gray-50 rounded-lg">
+                    <div className="p-2 bg-red-100 rounded-full mr-4">
+                      <div className="h-6 w-6 flex items-center justify-center text-red-600">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M12.395 2.553a1 1 0 00-1.45-.385c-.345.23-.614.558-.822.88-.214.33-.403.713-.57 1.116-.334.804-.614 1.768-.84 2.734a31.365 31.365 0 00-.613 3.58 2.64 2.64 0 01-.945-1.067c-.328-.68-.398-1.534-.398-2.654A1 1 0 005.05 6.05 6.981 6.981 0 003 11a7 7 0 1011.95-4.95c-.592-.591-.98-.985-1.348-1.467-.363-.476-.724-1.063-1.207-2.03zM12.12 15.12A3 3 0 017 13s.879.5 2.5.5c0-1 .5-4 1.25-4.5.5 1 .786 1.293 1.371 1.879A2.99 2.99 0 0113 13a2.99 2.99 0 01-.879 2.121z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Calories/Rep</p>
+                      <p className="font-semibold">{details.calories_per_rep || '~5'} cal</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Start button */}
+              <Link
+                to={`/workout/${exercise.id}/live`}
+                className="flex items-center justify-center bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 hover:from-blue-700 hover:to-indigo-700 transition group"
+              >
+                <Play className="mr-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                <span className="font-bold">Start Exercise</span>
+              </Link>
+            </motion.div>
+            
+            {/* Related Exercises */}
+            {relatedExercises.length > 0 && (
+              <motion.div 
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+                className="bg-white rounded-xl shadow-md overflow-hidden"
+              >
+                <div className="p-6">
+                  <h2 className="text-xl font-bold mb-4 text-gray-800">Related Exercises</h2>
+                  
+                  <div className="space-y-3">
+                    {relatedExercises.map(relExercise => (
+                      <Link 
+                        key={relExercise.id} 
+                        to={`/exercise/${relExercise.id}`}
+                        className="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                      >
+                        <div className="h-16 w-16 rounded-md overflow-hidden bg-gray-200 mr-3 flex-shrink-0">
+                          {relExercise.demo_image_url ? (
+                            <img src={relExercise.demo_image_url} alt={relExercise.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400">
+                              <Dumbbell className="h-8 w-8" />
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 truncate">{relExercise.name}</p>
+                          <div className="mt-1">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs ${
+                              relExercise.difficulty === 'Beginner' ? 'bg-green-100 text-green-800' :
+                              relExercise.difficulty === 'Intermediate' ? 'bg-yellow-100 text-yellow-800' :
+                              relExercise.difficulty === 'Advanced' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {relExercise.difficulty}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <ChevronRight className="h-5 w-5 text-gray-400" />
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Right Column - Details Tabs */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:col-span-2 bg-white rounded-xl shadow-md overflow-hidden"
+          >
+            {/* Tabs */}
+            <div className="border-b border-gray-200">
+              <div className="flex overflow-x-auto hide-scrollbar">
                 <button
                   onClick={() => setActiveTab('instructions')}
-                  className={`inline-block p-4 rounded-t-lg ${
+                  className={`px-6 py-4 text-md font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'instructions' 
-                      ? 'border-b-2 border-blue-600 text-blue-600'
-                      : 'border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   Instructions
                 </button>
-              </li>
-              <li className="mr-2">
                 <button
                   onClick={() => setActiveTab('benefits')}
-                  className={`inline-block p-4 rounded-t-lg ${
+                  className={`px-6 py-4 text-md font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'benefits' 
-                      ? 'border-b-2 border-blue-600 text-blue-600'
-                      : 'border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   Benefits
                 </button>
-              </li>
-              <li className="mr-2">
                 <button
                   onClick={() => setActiveTab('mistakes')}
-                  className={`inline-block p-4 rounded-t-lg ${
+                  className={`px-6 py-4 text-md font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'mistakes' 
-                      ? 'border-b-2 border-blue-600 text-blue-600'
-                      : 'border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   Common Mistakes
                 </button>
-              </li>
-              <li>
                 <button
                   onClick={() => setActiveTab('variations')}
-                  className={`inline-block p-4 rounded-t-lg ${
+                  className={`px-6 py-4 text-md font-medium border-b-2 transition-colors whitespace-nowrap ${
                     activeTab === 'variations' 
-                      ? 'border-b-2 border-blue-600 text-blue-600'
-                      : 'border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
                   Variations
                 </button>
-              </li>
-            </ul>
-          </div>
-          
-          {/* Tab Content */}
-          <div className="py-2">
-            {activeTab === 'instructions' && (
-              <div>
-                <h2 className="text-xl font-semibold mb-3">How to perform {exercise.name}</h2>
-                {details.instructions ? (
-                  <p className="text-gray-700 whitespace-pre-line">{formatText(details.instructions)}</p>
-                ) : (
-                  <p className="text-gray-500 italic">Instructions are not available for this exercise.</p>
-                )}
               </div>
-            )}
-            
-            {activeTab === 'benefits' && (
-              <div>
-                <h2 className="text-xl font-semibold mb-3">Benefits</h2>
-                {details.benefits ? (
-                  <p className="text-gray-700 whitespace-pre-line">{formatText(details.benefits)}</p>
-                ) : (
-                  <p className="text-gray-500 italic">Benefits information is not available for this exercise.</p>
-                )}
-              </div>
-            )}
-            
-            {activeTab === 'mistakes' && (
-              <div>
-                <h2 className="text-xl font-semibold mb-3">Common Mistakes to Avoid</h2>
-                {details.common_mistakes ? (
-                  <p className="text-gray-700 whitespace-pre-line">{formatText(details.common_mistakes)}</p>
-                ) : (
-                  <p className="text-gray-500 italic">Common mistakes information is not available for this exercise.</p>
-                )}
-              </div>
-            )}
-            
-            {activeTab === 'variations' && (
-              <div>
-                <h2 className="text-xl font-semibold mb-3">Variations & Modifications</h2>
-                {details.variations ? (
-                  <p className="text-gray-700 whitespace-pre-line">{formatText(details.variations)}</p>
-                ) : (
-                  <p className="text-gray-500 italic">Variations information is not available for this exercise.</p>
-                )}
-              </div>
-            )}
-          </div>
-          
-          {/* Placeholder for missing information */}
-          {(!details.instructions || !details.benefits || !details.common_mistakes || !details.variations) && (
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-              Some detailed information for this exercise is currently unavailable.
             </div>
-          )}
-          
-          {/* Related Exercises */}
-          {relatedExercises.length > 0 && (
-            <div className="pt-4 border-t">
-              <h3 className="text-lg font-semibold mb-3">Related Exercises</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {relatedExercises.map(relExercise => (
-                  <Link 
-                    key={relExercise.id} 
-                    to={`/exercise/${relExercise.id}`}
-                    className="flex items-center p-2 border rounded-lg hover:bg-gray-50 transition"
-                  >
-                    <div className="w-12 h-12 bg-gray-200 rounded overflow-hidden mr-2">
-                      {relExercise.demo_image_url ? (
-                        <img src={relExercise.demo_image_url} alt={relExercise.name} className="w-full h-full object-cover" />
+            
+            {/* Tab Content */}
+            <div className="p-6">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {activeTab === 'instructions' && (
+                    <div>
+                      <div className="flex items-center mb-4">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center ${getDifficultyColor(exercise.difficulty)} text-white mr-3`}>
+                          <CheckCircle className="h-5 w-5" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800">How to perform {exercise.name}</h2>
+                      </div>
+                      
+                      {details.instructions ? (
+                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{formatText(details.instructions)}</p>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-500">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
+                        <div className="p-6 bg-gray-50 rounded-lg text-center">
+                          <p className="text-gray-500 italic">Instructions are not available for this exercise.</p>
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{relExercise.name}</p>
-                      <p className="text-xs text-gray-500">{relExercise.difficulty}</p>
+                  )}
+                  
+                  {activeTab === 'benefits' && (
+                    <div>
+                      <div className="flex items-center mb-4">
+                        <div className="h-8 w-8 rounded-full flex items-center justify-center bg-green-600 text-white mr-3">
+                          <Award className="h-5 w-5" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800">Benefits</h2>
+                      </div>
+                      
+                      {details.benefits ? (
+                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{formatText(details.benefits)}</p>
+                      ) : (
+                        <div className="p-6 bg-gray-50 rounded-lg text-center">
+                          <p className="text-gray-500 italic">Benefits information is not available for this exercise.</p>
+                        </div>
+                      )}
                     </div>
-                  </Link>
-                ))}
-              </div>
+                  )}
+                  
+                  {activeTab === 'mistakes' && (
+                    <div>
+                      <div className="flex items-center mb-4">
+                        <div className="h-8 w-8 rounded-full flex items-center justify-center bg-red-600 text-white mr-3">
+                          <AlertTriangle className="h-5 w-5" />
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800">Common Mistakes to Avoid</h2>
+                      </div>
+                      
+                      {details.common_mistakes ? (
+                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{formatText(details.common_mistakes)}</p>
+                      ) : (
+                        <div className="p-6 bg-gray-50 rounded-lg text-center">
+                          <p className="text-gray-500 italic">Common mistakes information is not available for this exercise.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {activeTab === 'variations' && (
+                    <div>
+                      <div className="flex items-center mb-4">
+                        <div className="h-8 w-8 rounded-full flex items-center justify-center bg-purple-600 text-white mr-3">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                          </svg>
+                        </div>
+                        <h2 className="text-2xl font-bold text-gray-800">Variations & Modifications</h2>
+                      </div>
+                      {details.variations ? (
+                        <p className="text-gray-700 whitespace-pre-line leading-relaxed">{formatText(details.variations)}</p>
+                      ) : (
+                        <div className="p-6 bg-gray-50 rounded-lg text-center">
+                          <p className="text-gray-500 italic">Variations information is not available for this exercise.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
             </div>
-          )}
+          </motion.div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

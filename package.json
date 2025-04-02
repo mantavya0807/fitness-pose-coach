@@ -18,6 +18,7 @@
     "@testing-library/user-event": "^13.5.0",
     "assert": "^2.1.0",
     "buffer": "^6.0.3",
+    "canvas-confetti": "^1.9.3",
     "chart.js": "^4.4.8",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -10,9 +10,8 @@ import useAuthStore from '../store/authStore';
 import { supabase } from '../supabaseClient';
 import FoodCamera from '../components/nutrition/FoodCamera';
 import NutritionChatbot from '../components/nutrition/NutritionChatbot';
-
-// Colors for charts
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28'];
+import { motion, AnimatePresence } from 'framer-motion'; 
+import { colors, animations, shadows } from '../styles/theme';
 
 // Fetch user's nutrition data for the day
 const fetchDailyNutrition = async (userId, date) => {
@@ -245,7 +244,14 @@ const deleteFoodItem = async (mealFoodItemId) => {
 // Component for food item in meal list
 const FoodItem = ({ item, onDelete, disabled }) => {
   return (
-    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-md group">
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      layout
+      className="flex justify-between items-center p-4 bg-white rounded-xl border border-gray-100 hover:border-blue-200 hover:shadow-md group transition-all duration-200"
+      style={{ boxShadow: shadows.sm }}
+    >
       <div>
         <div className="font-medium">{item.name}</div>
         <div className="text-xs text-gray-500">
@@ -255,18 +261,20 @@ const FoodItem = ({ item, onDelete, disabled }) => {
       </div>
       <div className="flex items-center">
         <div className="text-right mr-3">
-          <div className="font-medium">{Math.round(item.calories)} cal</div>
+          <div className="font-medium text-blue-600">{Math.round(item.calories)} cal</div>
         </div>
-        <button
+        <motion.button
+          whileHover={{ scale: 1.2, rotate: 180 }}
+          whileTap={{ scale: 0.9 }}
           onClick={() => onDelete(item.id)}
           disabled={disabled}
-          className="opacity-0 group-hover:opacity-100 p-1 text-red-500 hover:bg-red-50 rounded disabled:opacity-50"
+          className="opacity-0 group-hover:opacity-100 p-1.5 text-red-500 hover:bg-red-50 rounded-full transition-all duration-200 disabled:opacity-50"
           title="Remove item"
         >
           <Trash2 size={16} />
-        </button>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
@@ -276,6 +284,7 @@ const NutritionDashboard = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   
+  // State
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showChatbot, setShowChatbot] = useState(false);
   const [showFoodCamera, setShowFoodCamera] = useState(false);
@@ -338,6 +347,26 @@ const NutritionDashboard = () => {
     }
   };
 
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: { 
+      opacity: 1,
+      transition: { 
+        staggerChildren: 0.1
+      }
+    }
+  };
+  
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { 
+      opacity: 1, 
+      y: 0,
+      transition: { duration: 0.4, ease: [0.25, 0.1, 0.25, 1.0] }
+    }
+  };
+
   // Next day navigation
   const handleNextDay = () => {
     const nextDay = new Date(currentDate);
@@ -356,7 +385,17 @@ const NutritionDashboard = () => {
   
   // Handle food camera success
   const handleFoodCameraSuccess = useCallback((result) => {
-    // Refetch nutrition data when food is added
+    // Show success message
+    setRecognitionComplete(true);
+    setRecognitionSuccess(true);
+    setRecognitionMessage(`Added ${result.recognitionResult.foods.length} food items to your meal!`);
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+      setRecognitionComplete(false);
+    }, 3000);
+    
+    // Refetch nutrition data
     queryClient.invalidateQueries({ queryKey: ['dailyNutrition'] });
     queryClient.invalidateQueries({ queryKey: ['weeklyNutrition'] });
     queryClient.invalidateQueries({ queryKey: ['recentMeals'] });
@@ -379,64 +418,88 @@ const NutritionDashboard = () => {
     { name: 'Fat', value: nutritionData.macros.fat }
   ] : [];
   
+  // Colors for charts
+  const COLORS = [colors.primary[500], colors.accent.green.base, colors.accent.orange.base];
+  
   // For displaying toast when recognition is complete
   const [recognitionComplete, setRecognitionComplete] = useState(false);
   const [recognitionSuccess, setRecognitionSuccess] = useState(false);
   const [recognitionMessage, setRecognitionMessage] = useState('');
-  
-  // Handle recognition success
-  const handleRecognitionSuccess = (result) => {
-    setRecognitionComplete(true);
-    setRecognitionSuccess(true);
-    setRecognitionMessage(`Added ${result.recognitionResult.foods.length} food items to your meal!`);
-    
-    // Auto-hide after 3 seconds
-    setTimeout(() => {
-      setRecognitionComplete(false);
-    }, 3000);
-    
-    // Refetch data
-    handleFoodCameraSuccess(result);
-  };
 
   return (
-    <div className="container mx-auto p-4 space-y-6">
+    <motion.div 
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="container mx-auto p-4 space-y-6"
+    >
       {/* Header with Date Navigation */}
-      <div className="flex justify-between items-center">
+      <motion.div 
+        variants={itemVariants}
+        className="flex justify-between items-center"
+      >
         <div>
-          <h1 className="text-3xl font-bold">Nutrition Tracker</h1>
+          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+            Nutrition Tracker
+          </h1>
           <p className="text-gray-500">Track your daily food intake and nutrition goals</p>
         </div>
         <div className="flex items-center gap-4">
-          <button onClick={() => setShowFoodCamera(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700">
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowFoodCamera(true)} 
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-md hover:shadow-md transition-all duration-300"
+            style={{ boxShadow: shadows.md }}
+          >
             <Camera size={16} />
             <span>Scan Food</span>
-          </button>
-          <button onClick={() => setShowChatbot(prev => !prev)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          </motion.button>
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowChatbot(prev => !prev)} 
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-md hover:shadow-md transition-all duration-300"
+            style={{ boxShadow: shadows.md }}
+          >
             <MessageCircle size={16} />
             <span>Nutrition Chat</span>
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Date Navigation */}
-      <Card>
-        <CardContent className="p-4">
+      <motion.div 
+        variants={itemVariants}
+        className="bg-white rounded-xl shadow-md overflow-hidden"
+        style={{ boxShadow: shadows.md }}
+      >
+        <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50">
           <div className="flex justify-between items-center">
-            <button onClick={handlePrevDay} className="p-2 hover:bg-gray-100 rounded-full">
-              <ChevronLeft size={20} />
-            </button>
-            <h2 className="text-xl font-medium">{formattedDate}</h2>
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handlePrevDay} 
+              className="p-2 hover:bg-white rounded-full transition-colors duration-200"
+            >
+              <ChevronLeft size={20} className="text-blue-600" />
+            </motion.button>
+            <h2 className="text-xl font-medium text-gray-800 flex items-center">
+              <Calendar size={18} className="mr-2 text-blue-500" />
+              {formattedDate}
+            </h2>
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               onClick={handleNextDay} 
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 hover:bg-white rounded-full transition-colors duration-200"
               disabled={currentDate.toDateString() === new Date().toDateString()}
             >
-              <ChevronRight size={20} />
-            </button>
+              <ChevronRight size={20} className={currentDate.toDateString() === new Date().toDateString() ? "text-gray-300" : "text-blue-600"} />
+            </motion.button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </motion.div>
 
       {isLoading ? (
         <div className="flex justify-center py-12">
@@ -456,19 +519,28 @@ const NutritionDashboard = () => {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Daily Summary */}
-          <div className="space-y-6">
+          <motion.div variants={itemVariants} className="space-y-6">
             {/* Daily Calories Progress */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-medium">Calories</CardTitle>
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300" style={{ boxShadow: shadows.md }}>
+              <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="text-lg font-medium text-gray-800">Calories</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="text-center mb-2">
-                  <span className="text-3xl font-bold">{Math.round(nutritionData?.consumed || 0)}</span>
+              <CardContent className="p-6">
+                <div className="text-center mb-6">
+                  <span className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
+                    {Math.round(nutritionData?.consumed || 0)}
+                  </span>
                   <span className="text-xl text-gray-500"> / {nutritionData?.dailyGoal || 2000}</span>
                 </div>
-                <Progress value={caloriePercentage} className="h-3" />
-                <div className="flex justify-between mt-2 text-sm text-gray-500">
+                <Progress 
+                  value={caloriePercentage} 
+                  className="h-3 rounded-full bg-gray-100" 
+                  style={{ 
+                    background: `linear-gradient(to right, ${colors.primary[500]} ${caloriePercentage}%, ${colors.gray[200]} ${caloriePercentage}%)`,
+                    transition: 'all 0.5s ease' 
+                  }}
+                />
+                <div className="flex justify-between mt-3 text-sm text-gray-500">
                   <span>0</span>
                   <span>{nutritionData?.dailyGoal || 2000} cal</span>
                 </div>
@@ -476,11 +548,11 @@ const NutritionDashboard = () => {
             </Card>
 
             {/* Macros Distribution */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-medium">Macronutrients</CardTitle>
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300" style={{ boxShadow: shadows.md }}>
+              <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="text-lg font-medium text-gray-800">Macronutrients</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -496,6 +568,9 @@ const NutritionDashboard = () => {
                           percent > 0.05 ? `${name} ${(percent * 100).toFixed(0)}%` : ''
                         }
                         labelLine={false}
+                        animationDuration={1000}
+                        animationBegin={0}
+                        animationEasing="ease-out"
                       >
                         {macroData.map((entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -505,333 +580,489 @@ const NutritionDashboard = () => {
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <div className="bg-blue-50 p-2 rounded-md">
-                    <div className="text-xs text-blue-800">Protein</div>
-                    <div className="font-medium">{nutritionData?.macros.protein.toFixed(1) || 0}g</div>
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-3 rounded-lg">
+                    <div className="text-xs text-blue-800 font-medium">Protein</div>
+                    <div className="font-medium text-blue-900">{nutritionData?.macros.protein.toFixed(1) || 0}g</div>
                   </div>
-                  <div className="bg-green-50 p-2 rounded-md">
-                    <div className="text-xs text-green-800">Carbs</div>
-                    <div className="font-medium">{nutritionData?.macros.carbs.toFixed(1) || 0}g</div>
+                  <div className="bg-gradient-to-r from-green-50 to-green-100 p-3 rounded-lg">
+                    <div className="text-xs text-green-800 font-medium">Carbs</div>
+                    <div className="font-medium text-green-900">{nutritionData?.macros.carbs.toFixed(1) || 0}g</div>
                   </div>
-                  <div className="bg-yellow-50 p-2 rounded-md">
-                    <div className="text-xs text-yellow-800">Fat</div>
-                    <div className="font-medium">{nutritionData?.macros.fat.toFixed(1) || 0}g</div>
+                  <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 p-3 rounded-lg">
+                    <div className="text-xs text-yellow-800 font-medium">Fat</div>
+                    <div className="font-medium text-yellow-900">{nutritionData?.macros.fat.toFixed(1) || 0}g</div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Weekly Trends */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-medium">Weekly Trends</CardTitle>
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300" style={{ boxShadow: shadows.md }}>
+              <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="text-lg font-medium text-gray-800">Weekly Trends</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={weeklyData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="day" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => [`${value} cal`, 'Calories']} />
-                      <Bar dataKey="calories" fill="#8884d8" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis 
+                        dataKey="day" 
+                        axisLine={false}
+                        tickLine={false}
+                        stroke="#888"
+                      />
+                      <YAxis 
+                        axisLine={false}
+                        tickLine={false}
+                        stroke="#888"
+                      />
+                      <Tooltip
+                        formatter={(value) => [`${value} cal`, 'Calories']}
+                        labelFormatter={(day) => `${day}`}
+                        contentStyle={{
+                          backgroundColor: 'white',
+                          borderRadius: '8px',
+                          border: 'none',
+                          boxShadow: shadows.lg
+                        }}
+                      />
+                      <Bar 
+                        dataKey="calories" 
+                        fill={colors.primary[500]}
+                        radius={[4, 4, 0, 0]}
+                        animationDuration={1000}
+                        animationBegin={300}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
 
-          {/* Middle & Right Columns - Meals & Recent History */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Middle & Right Columns - Meals */}
+          <motion.div variants={itemVariants} className="lg:col-span-2 space-y-6">
             {/* Today's Meals */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-medium">Today's Meals</CardTitle>
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300" style={{ boxShadow: shadows.md }}>
+              <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="text-lg font-medium text-gray-800">Today's Meals</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 <Tabs value={activeMealTab} onValueChange={setActiveMealTab}>
-                  <TabsList className="grid grid-cols-4 mb-4">
-                    <TabsTrigger value="breakfast">Breakfast</TabsTrigger>
-                    <TabsTrigger value="lunch">Lunch</TabsTrigger>
-                    <TabsTrigger value="dinner">Dinner</TabsTrigger>
-                    <TabsTrigger value="snack">Snacks</TabsTrigger>
+                  <TabsList className="grid grid-cols-4 mb-6 bg-gray-100 p-1 rounded-lg">
+                    <TabsTrigger 
+                      value="breakfast"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md rounded-md transition-all duration-200"
+                    >
+                      Breakfast
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="lunch"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md rounded-md transition-all duration-200"
+                    >
+                      Lunch
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="dinner"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md rounded-md transition-all duration-200"
+                    >
+                      Dinner
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="snack"
+                      className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-md rounded-md transition-all duration-200"
+                    >
+                      Snacks
+                    </TabsTrigger>
                   </TabsList>
                   
+                  {/* Breakfast Tab Content */}
                   <TabsContent value="breakfast" className="space-y-4">
-                    {nutritionData?.meals?.breakfast?.items?.length > 0 ? (
-                      <>
-                        {nutritionData.meals.breakfast.items.map((item, index) => (
-                          <FoodItem 
-                            key={item.id || index} 
-                            item={item} 
-                            onDelete={handleDeleteFoodItem}
-                            disabled={deleteMutation.isLoading}
-                          />
-                        ))}
-                        <div className="flex justify-between border-t pt-2 font-medium">
-                          <span>Total</span>
-                          <span>{Math.round(nutritionData.meals.breakfast.calories)} cal</span>
-                        </div>
-                        <div className="flex justify-end">
-                          <button 
-                            onClick={() => navigateToFoodSearch('breakfast')}
-                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    <AnimatePresence>
+                      {nutritionData?.meals?.breakfast?.items?.length > 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <div className="space-y-3">
+                            {nutritionData.meals.breakfast.items.map((item, index) => (
+                              <FoodItem 
+                                key={item.id || index} 
+                                item={item} 
+                                onDelete={handleDeleteFoodItem}
+                                disabled={deleteMutation.isLoading}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-between border-t pt-3 font-medium mt-4">
+                            <span>Total</span>
+                            <span className="text-blue-600">{Math.round(nutritionData.meals.breakfast.calories)} cal</span>
+                          </div>
+                          <div className="flex justify-end mt-2">
+                            <motion.button 
+                              whileHover={{ scale: 1.05, x: 5 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => navigateToFoodSearch('breakfast')}
+                              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors duration-200"
+                            >
+                              <Plus size={16} />
+                              <span>Add more items</span>
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-center py-10 bg-gradient-to-b from-gray-50 to-white rounded-lg"
+                        >
+                          <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.2 }}
                           >
-                            <Plus size={16} />
-                            <span>Add more items</span>
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Utensils className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                        <p className="text-gray-500">No breakfast recorded yet</p>
-                        <div className="mt-4 flex justify-center gap-3">
-                          <button 
-                            onClick={() => navigateToFoodSearch('breakfast')}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
-                          >
-                            <Plus size={16} />
-                            <span>Add Food</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setActiveMealTab('breakfast');
-                              setShowFoodCamera(true);
-                            }}
-                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
-                          >
-                            <Camera size={16} />
-                            <span>Scan Food</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            <Utensils className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                            <p className="text-gray-500 mb-6">No breakfast recorded yet</p>
+                            <div className="flex justify-center gap-4">
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => navigateToFoodSearch('breakfast')}
+                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200 shadow-md"
+                              >
+                                <Plus size={16} />
+                                <span>Add Food</span>
+                              </motion.button>
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setActiveMealTab('breakfast');
+                                  setShowFoodCamera(true);
+                                }}
+                                className="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2 shadow-md"
+                              >
+                                <Camera size={16} />
+                                <span>Scan Food</span>
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </TabsContent>
                   
+                  {/* Lunch Tab Content */}
                   <TabsContent value="lunch" className="space-y-4">
-                    {nutritionData?.meals?.lunch?.items?.length > 0 ? (
-                      <>
-                        {nutritionData.meals.lunch.items.map((item, index) => (
-                          <FoodItem 
-                            key={item.id || index} 
-                            item={item} 
-                            onDelete={handleDeleteFoodItem}
-                            disabled={deleteMutation.isLoading}
-                          />
-                        ))}
-                        <div className="flex justify-between border-t pt-2 font-medium">
-                          <span>Total</span>
-                          <span>{Math.round(nutritionData.meals.lunch.calories)} cal</span>
-                        </div>
-                        <div className="flex justify-end">
-                          <button 
-                            onClick={() => navigateToFoodSearch('lunch')}
-                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    <AnimatePresence>
+                      {nutritionData?.meals?.lunch?.items?.length > 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <div className="space-y-3">
+                            {nutritionData.meals.lunch.items.map((item, index) => (
+                              <FoodItem 
+                                key={item.id || index} 
+                                item={item} 
+                                onDelete={handleDeleteFoodItem}
+                                disabled={deleteMutation.isLoading}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-between border-t pt-3 font-medium mt-4">
+                            <span>Total</span>
+                            <span className="text-blue-600">{Math.round(nutritionData.meals.lunch.calories)} cal</span>
+                          </div>
+                          <div className="flex justify-end mt-2">
+                            <motion.button 
+                              whileHover={{ scale: 1.05, x: 5 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => navigateToFoodSearch('lunch')}
+                              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors duration-200"
+                            >
+                              <Plus size={16} />
+                              <span>Add more items</span>
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-center py-10 bg-gradient-to-b from-gray-50 to-white rounded-lg"
+                        >
+                          <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.2 }}
                           >
-                            <Plus size={16} />
-                            <span>Add more items</span>
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Utensils className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                        <p className="text-gray-500">No lunch recorded yet</p>
-                        <div className="mt-4 flex justify-center gap-3">
-                          <button 
-                            onClick={() => navigateToFoodSearch('lunch')}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
-                          >
-                            <Plus size={16} />
-                            <span>Add Food</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setActiveMealTab('lunch');
-                              setShowFoodCamera(true);
-                            }}
-                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
-                          >
-                            <Camera size={16} />
-                            <span>Scan Food</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            <Utensils className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                            <p className="text-gray-500 mb-6">No lunch recorded yet</p>
+                            <div className="flex justify-center gap-4">
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => navigateToFoodSearch('lunch')}
+                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200 shadow-md"
+                              >
+                                <Plus size={16} />
+                                <span>Add Food</span>
+                              </motion.button>
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setActiveMealTab('lunch');
+                                  setShowFoodCamera(true);
+                                }}
+                                className="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2 shadow-md"
+                              >
+                                <Camera size={16} />
+                                <span>Scan Food</span>
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </TabsContent>
                   
+                  {/* Dinner Tab Content */}
                   <TabsContent value="dinner" className="space-y-4">
-                    {nutritionData?.meals?.dinner?.items?.length > 0 ? (
-                      <>
-                        {nutritionData.meals.dinner.items.map((item, index) => (
-                          <FoodItem 
-                            key={item.id || index} 
-                            item={item} 
-                            onDelete={handleDeleteFoodItem}
-                            disabled={deleteMutation.isLoading}
-                          />
-                        ))}
-                        <div className="flex justify-between border-t pt-2 font-medium">
-                          <span>Total</span>
-                          <span>{Math.round(nutritionData.meals.dinner.calories)} cal</span>
-                        </div>
-                        <div className="flex justify-end">
-                          <button 
-                            onClick={() => navigateToFoodSearch('dinner')}
-                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    <AnimatePresence>
+                      {nutritionData?.meals?.dinner?.items?.length > 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <div className="space-y-3">
+                            {nutritionData.meals.dinner.items.map((item, index) => (
+                              <FoodItem 
+                                key={item.id || index} 
+                                item={item} 
+                                onDelete={handleDeleteFoodItem}
+                                disabled={deleteMutation.isLoading}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-between border-t pt-3 font-medium mt-4">
+                            <span>Total</span>
+                            <span className="text-blue-600">{Math.round(nutritionData.meals.dinner.calories)} cal</span>
+                          </div>
+                          <div className="flex justify-end mt-2">
+                            <motion.button 
+                              whileHover={{ scale: 1.05, x: 5 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => navigateToFoodSearch('dinner')}
+                              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors duration-200"
+                            >
+                              <Plus size={16} />
+                              <span>Add more items</span>
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-center py-10 bg-gradient-to-b from-gray-50 to-white rounded-lg"
+                        >
+                          <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.2 }}
                           >
-                            <Plus size={16} />
-                            <span>Add more items</span>
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Utensils className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                        <p className="text-gray-500">No dinner recorded yet</p>
-                        <div className="mt-4 flex justify-center gap-3">
-                          <button 
-                            onClick={() => navigateToFoodSearch('dinner')}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
-                          >
-                            <Plus size={16} />
-                            <span>Add Food</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setActiveMealTab('dinner');
-                              setShowFoodCamera(true);
-                            }}
-                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
-                          >
-                            <Camera size={16} />
-                            <span>Scan Food</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            <Utensils className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                            <p className="text-gray-500 mb-6">No dinner recorded yet</p>
+                            <div className="flex justify-center gap-4">
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => navigateToFoodSearch('dinner')}
+                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200 shadow-md"
+                              >
+                                <Plus size={16} />
+                                <span>Add Food</span>
+                              </motion.button>
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setActiveMealTab('dinner');
+                                  setShowFoodCamera(true);
+                                }}
+                                className="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2 shadow-md"
+                              >
+                                <Camera size={16} />
+                                <span>Scan Food</span>
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </TabsContent>
                   
+                  {/* Snack Tab Content */}
                   <TabsContent value="snack" className="space-y-4">
-                    {nutritionData?.meals?.snack?.items?.length > 0 ? (
-                      <>
-                        {nutritionData.meals.snack.items.map((item, index) => (
-                          <FoodItem 
-                            key={item.id || index} 
-                            item={item} 
-                            onDelete={handleDeleteFoodItem}
-                            disabled={deleteMutation.isLoading}
-                          />
-                        ))}
-                        <div className="flex justify-between border-t pt-2 font-medium">
-                          <span>Total</span>
-                          <span>{Math.round(nutritionData.meals.snack.calories)} cal</span>
-                        </div>
-                        <div className="flex justify-end">
-                          <button 
-                            onClick={() => navigateToFoodSearch('snack')}
-                            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                    <AnimatePresence>
+                      {nutritionData?.meals?.snack?.items?.length > 0 ? (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                        >
+                          <div className="space-y-3">
+                            {nutritionData.meals.snack.items.map((item, index) => (
+                              <FoodItem 
+                                key={item.id || index} 
+                                item={item} 
+                                onDelete={handleDeleteFoodItem}
+                                disabled={deleteMutation.isLoading}
+                              />
+                            ))}
+                          </div>
+                          <div className="flex justify-between border-t pt-3 font-medium mt-4">
+                            <span>Total</span>
+                            <span className="text-blue-600">{Math.round(nutritionData.meals.snack.calories)} cal</span>
+                          </div>
+                          <div className="flex justify-end mt-2">
+                            <motion.button 
+                              whileHover={{ scale: 1.05, x: 5 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => navigateToFoodSearch('snack')}
+                              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 transition-colors duration-200"
+                            >
+                              <Plus size={16} />
+                              <span>Add more items</span>
+                            </motion.button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          className="text-center py-10 bg-gradient-to-b from-gray-50 to-white rounded-lg"
+                        >
+                          <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.2 }}
                           >
-                            <Plus size={16} />
-                            <span>Add more items</span>
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <div className="text-center py-8">
-                        <Utensils className="mx-auto h-12 w-12 text-gray-400 mb-2" />
-                        <p className="text-gray-500">No snacks recorded yet</p>
-                        <div className="mt-4 flex justify-center gap-3">
-                          <button 
-                            onClick={() => navigateToFoodSearch('snack')}
-                            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-2"
-                          >
-                            <Plus size={16} />
-                            <span>Add Food</span>
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setActiveMealTab('snack');
-                              setShowFoodCamera(true);
-                            }}
-                            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center gap-2"
-                          >
-                            <Camera size={16} />
-                            <span>Scan Food</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            <Utensils className="mx-auto h-16 w-16 text-gray-300 mb-4" />
+                            <p className="text-gray-500 mb-6">No snacks recorded yet</p>
+                            <div className="flex justify-center gap-4">
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => navigateToFoodSearch('snack')}
+                                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 transition-colors duration-200 shadow-md"
+                              >
+                                <Plus size={16} />
+                                <span>Add Food</span>
+                              </motion.button>
+                              <motion.button 
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => {
+                                  setActiveMealTab('snack');
+                                  setShowFoodCamera(true);
+                                }}
+                                className="px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg flex items-center gap-2 shadow-md"
+                              >
+                                <Camera size={16} />
+                                <span>Scan Food</span>
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </TabsContent>
                 </Tabs>
               </CardContent>
             </Card>
 
             {/* Recent Meals History */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg font-medium">Recent Meals</CardTitle>
+            <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300" style={{ boxShadow: shadows.md }}>
+              <CardHeader className="pb-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="text-lg font-medium text-gray-800">Recent Meals</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 {isLoadingRecent ? (
                   <div className="flex justify-center py-4">
                     <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
                   </div>
                 ) : recentMeals.length > 0 ? (
                   <div className="space-y-3">
-                    {recentMeals.map((meal, index) => (
-                      <div 
-                        key={meal.id || index} 
-                        className="flex justify-between items-center p-3 bg-gray-50 rounded-md hover:bg-gray-100 cursor-pointer"
-                        onClick={() => {
-                          // Set date to this meal's date and open appropriate tab
-                          const mealDate = new Date(meal.meal_date);
-                          setCurrentDate(mealDate);
-                          setActiveMealTab(meal.meal_type);
-                        }}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            meal.meal_type === 'breakfast' ? 'bg-yellow-100 text-yellow-600' :
-                            meal.meal_type === 'lunch' ? 'bg-green-100 text-green-600' :
-                            meal.meal_type === 'dinner' ? 'bg-blue-100 text-blue-600' :
-                            'bg-purple-100 text-purple-600'
-                          }`}>
-                            {meal.meal_type === 'breakfast' ? 'B' : 
-                             meal.meal_type === 'lunch' ? 'L' :
-                             meal.meal_type === 'dinner' ? 'D' : 'S'}
-                          </div>
-                          <div>
-                            <div className="font-medium capitalize">{meal.meal_type}</div>
-                            <div className="text-xs text-gray-500 flex items-center gap-1">
-                              <Calendar size={12} />
-                              <span>{new Date(meal.meal_date).toLocaleDateString()}</span>
+                    <AnimatePresence>
+                      {recentMeals.map((meal, index) => (
+                        <motion.div 
+                          key={meal.id || index}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -10 }}
+                          transition={{ delay: index * 0.05 }}
+                          className="flex justify-between items-center p-3 bg-white rounded-lg hover:bg-gray-50 cursor-pointer border border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all duration-200"
+                          onClick={() => {
+                            // Set date to this meal's date and open appropriate tab
+                            const mealDate = new Date(meal.meal_date);
+                            setCurrentDate(mealDate);
+                            setActiveMealTab(meal.meal_type);
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                              meal.meal_type === 'breakfast' ? 'bg-gradient-to-br from-yellow-400 to-yellow-500 text-white' :
+                              meal.meal_type === 'lunch' ? 'bg-gradient-to-br from-green-400 to-green-500 text-white' :
+                              meal.meal_type === 'dinner' ? 'bg-gradient-to-br from-blue-400 to-blue-600 text-white' :
+                              'bg-gradient-to-br from-purple-400 to-purple-600 text-white'
+                            }`}>
+                              {meal.meal_type === 'breakfast' ? 'B' : 
+                              meal.meal_type === 'lunch' ? 'L' :
+                              meal.meal_type === 'dinner' ? 'D' : 'S'}
+                            </div>
+                            <div>
+                              <div className="font-medium capitalize">{meal.meal_type}</div>
+                              <div className="text-xs text-gray-500 flex items-center gap-1">
+                                <Calendar size={12} />
+                                <span>{new Date(meal.meal_date).toLocaleDateString()}</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">{Math.round(meal.total_calories || 0)} cal</div>
-                        </div>
-                      </div>
-                    ))}
+                          <div className="text-right">
+                            <div className="font-medium text-blue-600">{Math.round(meal.total_calories || 0)} cal</div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
                 ) : (
                   <div className="text-center py-4">
                     <p className="text-gray-500">No recent meals recorded</p>
                   </div>
                 )}
-                <button 
+                <motion.button 
+                  whileHover={{ scale: 1.02, y: -2 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => navigate('/nutrition/history')}
-                  className="w-full mt-4 text-center text-blue-600 hover:underline"
+                  className="w-full mt-6 text-center text-blue-600 hover:text-blue-800 font-medium transition-colors duration-200"
                 >
                   View All History
-                </button>
+                </motion.button>
               </CardContent>
             </Card>
-          </div>
+          </motion.div>
         </div>
       )}
 
@@ -840,7 +1071,8 @@ const NutritionDashboard = () => {
         <FoodCamera 
           isOpen={showFoodCamera} 
           onClose={() => setShowFoodCamera(false)}
-          onSuccess={handleRecognitionSuccess}
+          onSuccess={handleFoodCameraSuccess}
+          currentMealType={activeMealTab}
         />
       )}
 
@@ -851,21 +1083,29 @@ const NutritionDashboard = () => {
       />
       
       {/* Recognition Toast Notification */}
-      {recognitionComplete && (
-        <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg transition-opacity ${
-          recognitionSuccess ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-        }`}>
-          <div className="flex items-center gap-2">
-            {recognitionSuccess ? (
-              <Check size={20} className="flex-shrink-0" />
-            ) : (
-              <X size={20} className="flex-shrink-0" />
-            )}
-            <p>{recognitionMessage}</p>
-          </div>
-        </div>
-      )}
-    </div>
+      <AnimatePresence>
+        {recognitionComplete && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50 ${
+              recognitionSuccess ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' : 'bg-gradient-to-r from-red-500 to-red-600 text-white'
+            }`}
+            style={{ boxShadow: shadows.lg }}
+          >
+            <div className="flex items-center gap-2">
+              {recognitionSuccess ? (
+                <Check size={20} className="flex-shrink-0" />
+              ) : (
+                <X size={20} className="flex-shrink-0" />
+              )}
+              <p>{recognitionMessage}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 };
 
